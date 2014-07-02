@@ -89,6 +89,7 @@ class ggplot(object):
         self.xlimits = None
         self.ylimits = None
         self.ytick_labels = None
+        self.scales = []
         self.scale_y_reverse = None
         self.scale_x_reverse = None
         self.scale_y_log = None
