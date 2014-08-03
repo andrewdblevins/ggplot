@@ -244,7 +244,7 @@ class ggplot(object):
         y_scale = scales.get_scales('y')
 
         panel.train_position(data, x_scale, y_scale)
-        # data <- map_position(panel, data, scale_x(), scale_y())
+        data = panel.map_position(data, x_scale, y_scale)
 
         # print(scales)
         # print(data)
