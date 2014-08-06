@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import pandas as pd
 import matplotlib.cbook as cbook
+import pandas.core.common as com
 
 from ggplot.utils import is_categorical, make_iterable_ntimes
 from ggplot.utils.exceptions import GgplotError
@@ -28,45 +29,46 @@ class stat_bin(stat):
                       'binwidth': None, 'origin': None, 'breaks': None}
     CREATES = {'y', 'width'}
 
-    def _calculate(self, data):
-        x = data.pop('x')
+    def _calculate(self, data, scales, **kwargs):
+        x = data['x']
         breaks = self.params['breaks']
         right = self.params['right']
         binwidth = self.params['binwidth']
+        range_ = scales.x.dimension((0, 0))
 
         # y values are not needed
-        try:
-            del data['y']
-        except KeyError:
-            pass
-        else:
+        if 'y' in data:
             self._print_warning(_MSG_YVALUE)
 
         # If weight not mapped to, use one (no weight)
         try:
-            weights = data.pop('weight')
+            weights = data['weight']
         except KeyError:
             weights = np.ones(len(x))
         else:
-            weights = make_iterable_ntimes(weights, len(x))
+            weights = np.array(
+                make_iterable_ntimes(weights, len(x)))
+            weights[np.isnan(weights)] = 0
 
-        categorical = is_categorical(x.values)
-        if categorical:
-            x_assignments = x
-            x = sorted(set(x))
+        if com.is_integer_dtype(x):
+            bins = x
+            x = np.sort(x.drop_duplicates())
             width = make_iterable_ntimes(self.params['width'], len(x))
-        elif cbook.is_numlike(x.iloc[0]):
+        elif np.diff(range_) == 0:
+            bins = x
+            width = width
+        elif com.is_numeric_dtype(x):
             if breaks is None and binwidth is None:
-                _bin_count = 30
+                bin_count = 30
                 self._print_warning(_MSG_BINWIDTH)
             if binwidth:
-                _bin_count = int(np.ceil(np.ptp(x))) / binwidth
+                bin_count = int(np.ceil(np.ptp(x)) / binwidth)
 
             # Breaks have a higher precedence and,
             # pandas accepts either the breaks or the number of bins
-            _bins_info = breaks or _bin_count
-            x_assignments, breaks = pd.cut(x, bins=_bins_info, labels=False,
-                                           right=right, retbins=True)
+            bins_info = breaks or bin_count
+            bins, breaks = pd.cut(x, bins=bins_info, labels=False,
+                                          right=right, retbins=True)
             width = np.diff(breaks)
             x = [breaks[i] + width[i] / 2
                  for i in range(len(breaks)-1)]
@@ -77,30 +79,29 @@ class stat_bin(stat):
         #   - the bins to which each x is assigned
         #   - the weights of each x value
         # Then create a weighted frequency table
-        _df = pd.DataFrame({'assignments': x_assignments,
-                            'weights': weights
-                            })
-        _wfreq_table = pd.pivot_table(_df, values='weights',
-                                      rows=['assignments'], aggfunc=np.sum)
+        df = pd.DataFrame({'bins': bins,
+                           'weights': weights})
+        wfreq_table = pd.pivot_table(df, values='weights',
+                                     rows=['bins'], aggfunc=np.sum)
 
-        # For numerical x values, empty bins get have no value
-        # in the computed frequency table. We need to add the zeros and
-        # since frequency table is a Series object, we need to keep it ordered
-        if len(_wfreq_table) < len(x):
-            empty_bins = set(range(len(x))) - set(x_assignments)
-            _wfreq_table = _wfreq_table.to_dict()
-            for _b in empty_bins:
-                _wfreq_table[_b] = 0
-            _wfreq_table = pd.Series(_wfreq_table)
-            _wfreq_table = _wfreq_table.sort_index()
+        # For numerical x values, empty bins get no value
+        # in the computed frequency table. We need to add the
+        # zeros and since frequency table is a Series object,
+        # we need to keep it ordered
+        if len(wfreq_table) < len(x):
+            empty_bins = set(range(len(x))) - set(bins)
+            for b in empty_bins:
+                wfreq_table[b] = 0
+            wfreq_table = wfreq_table.sort_index()
 
-        y = list(_wfreq_table)
-        new_data = pd.DataFrame({'x': x, 'y': y, 'width': width})
+        res = pd.DataFrame({
+            'x' : x,
+            'count' : wfreq_table,
+            'width' : width})
 
-        # Copy the other aesthetics into the new dataframe
-        n = len(x)
-        for ae in data:
-            new_data[ae] = make_iterable_ntimes(data[ae].iloc[0], n)
-        return new_data
+        # other computed stats
+        res['density'] = (res['count'] / width) / res['count'].abs().sum()
+        res['ncount'] = res['count'] / res['count'].abs().max()
+        res['ndensity'] = res['density'] / res['density'].abs().max()
 
-
+        return res
