@@ -22,6 +22,20 @@ class geom_bar(geom):
     # to alpha and linestyle. TODO: raise exception
     _units = {'alpha', 'linestyle', 'linewidth'}
 
+    def reparameterise (self, data):
+        bool_idx = (data['y'] < 0)
+
+        data['ymin'] = 0
+        data.loc[bool_idx, 'ymin'] = data.loc[bool_idx, 'y']
+
+        data['ymax'] = data['y']
+        data.loc[bool_idx, 'ymax'] = 0
+
+        data['xmin'] = data['x'] - data['width'] / 2
+        data['xmax'] = data['x'] + data['width'] / 2
+        del data['width']
+        return data
+
     def _sort_list_types_by_x(self, pinfo):
         """
         Sort the lists in pinfo according to pinfo['x']
