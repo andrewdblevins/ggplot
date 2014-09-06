@@ -1,33 +1,33 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
-import pandas as pd
-from .geom import geom
+
+from ..scales.utils import resolution
+from .geom_rect import geom_rect
 
 
-class geom_tile(geom):
+class geom_tile(geom_rect):
 
-    DEFAULT_AES = {'alpha': None, 'color': '#333333', 'fill': '#333333',
+    DEFAULT_AES = {'alpha': 1, 'color': '', 'fill': '#333333',
                    'linetype': 'solid', 'size': 0.1}
     REQUIRED_AES = {'x', 'y'}
     DEFAULT_PARAMS = {'stat': 'identity', 'position': 'identity'}
 
     _aes_renames = {'linetype': 'linestyle', 'size': 'linewidth',
-                    'fill': 'color', 'color': 'edgecolor'}
-    _units = {'color', 'edgecolor', 'linestyle', 'linewidth'}
+                    'fill': 'facecolor', 'color': 'edgecolor'}
 
-    def _plot_unit(self, pinfo, ax):
-        # TODO: Reimplement this
-        x = pinfo.pop('x')
-        y = pinfo.pop('y')
-        fill = pinfo.pop('fill')
-        X = pd.DataFrame({'x': x,
-                          'y': y,
-                          'fill': fill}).set_index(['x', 'y']).unstack(0)
-        x_ticks = range(0, len(set(x)))
-        y_ticks = range(0, len(set(y)))
+    def reparameterise(self, data):
+        try:
+            width = data.pop('width')
+        except KeyError:
+            width = resolution(data['x'], False)
 
-        ax.imshow(X, interpolation='nearest', **pinfo)
-        ax.set_xticklabels(x)
-        ax.set_xticks(x_ticks)
-        ax.set_yticklabels(y)
-        ax.set_yticks(y_ticks)
+        try:
+            height = data.pop('height')
+        except KeyError:
+            height = resolution(data['y'], False)
+
+        data['xmin'] = data['x'] - width / 2
+        data['xmax'] = data['x'] + width / 2
+        data['ymin'] = data['y'] - height / 2
+        data['ymax'] = data['y'] + height / 2
+        return data
